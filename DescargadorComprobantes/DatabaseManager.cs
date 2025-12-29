@@ -555,5 +555,228 @@ namespace DescargadorComprobantes
                 Console.WriteLine("   📊 Total procesados: " + productos.Count + " productos");
             }
         }
+
+        public void CrearTablaSaldosSiNoExiste()
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                connection.Open();
+
+                string querySaldos = @"
+                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Saldos' AND xtype='U')
+                    CREATE TABLE Saldos (
+                        Id BIGINT PRIMARY KEY,
+                        IdCliente BIGINT,
+                        RazonSocial NVARCHAR(MAX),
+                        Saldo NVARCHAR(100),
+                        Numero NVARCHAR(100),
+                        TipoFc NVARCHAR(10),
+                        FechaEmision DATETIME,
+                        FechaVencimiento DATETIME,
+                        FechaDescarga DATETIME DEFAULT GETDATE()
+                    )";
+
+                using (var command = new SqlCommand(querySaldos, connection))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+                Console.WriteLine("   ✅ Tabla Saldos verificada/creada");
+            }
+        }
+
+        public void InsertarSaldos(List<ComprobanteDetalle> comprobantes, string fechaDesde, string fechaHasta)
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                connection.Open();
+
+                Console.WriteLine("   💾 Procesando saldos...");
+
+                // DELETE registros existentes en el rango de fechas
+                Console.WriteLine("   🗑️  Eliminando saldos existentes en el rango...");
+                string deleteQuery = @"
+                    DELETE FROM Saldos 
+                    WHERE FechaEmision >= @FechaDesde AND FechaEmision <= @FechaHasta";
+
+                using (var deleteCommand = new SqlCommand(deleteQuery, connection))
+                {
+                    deleteCommand.Parameters.AddWithValue("@FechaDesde", DateTime.Parse(fechaDesde));
+                    deleteCommand.Parameters.AddWithValue("@FechaHasta", DateTime.Parse(fechaHasta).AddDays(1).AddSeconds(-1));
+                    int filasEliminadas = deleteCommand.ExecuteNonQuery();
+                    Console.WriteLine("   ✅ " + filasEliminadas + " registros eliminados del rango");
+                }
+
+                int saldosInsertados = 0;
+
+                foreach (var comp in comprobantes)
+                {
+                    string query = @"
+                        IF NOT EXISTS (SELECT 1 FROM Saldos WHERE Id = @Id)
+                        INSERT INTO Saldos (Id, IdCliente, RazonSocial, Saldo, Numero, TipoFc, FechaEmision, FechaVencimiento)
+                        VALUES (@Id, @IdCliente, @RazonSocial, @Saldo, @Numero, @TipoFc, @FechaEmision, @FechaVencimiento)";
+
+                    using (var command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@Id", comp.Id);
+                        command.Parameters.AddWithValue("@IdCliente", comp.IdCliente);
+                        command.Parameters.AddWithValue("@RazonSocial",
+                        string.IsNullOrEmpty(comp.RazonSocial) ? (object)DBNull.Value : comp.RazonSocial);
+                        command.Parameters.AddWithValue("@Saldo", string.IsNullOrEmpty(comp.Saldo) ? (object)DBNull.Value : comp.Saldo);
+                        command.Parameters.AddWithValue("@Numero", string.IsNullOrEmpty(comp.Numero) ? (object)DBNull.Value : comp.Numero);
+                        command.Parameters.AddWithValue("@TipoFc", string.IsNullOrEmpty(comp.TipoFc) ? (object)DBNull.Value : comp.TipoFc);
+                        command.Parameters.AddWithValue("@FechaEmision", comp.FechaEmision);
+                        command.Parameters.AddWithValue("@FechaVencimiento", comp.FechaVencimiento);
+
+                        int rowsAffected = command.ExecuteNonQuery();
+                        if (rowsAffected > 0)
+                            saldosInsertados++;
+                    }
+                }
+
+                Console.WriteLine("   ✅ " + saldosInsertados + " saldos insertados");
+            }
+        }
+
+        public void CrearTablaDepositosSiNoExiste()
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                connection.Open();
+
+                string queryDepositos = @"
+                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Depositos' AND xtype='U')
+                    CREATE TABLE Depositos (
+                        Id BIGINT PRIMARY KEY,
+                        Nombre NVARCHAR(255),
+                        Activo BIT,
+                        Direccion NVARCHAR(500),
+                        IDProvincia BIGINT NULL,
+                        IDCiudad BIGINT NULL,
+                        FechaDescarga DATETIME DEFAULT GETDATE()
+                    )";
+
+                using (var command = new SqlCommand(queryDepositos, connection))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+                Console.WriteLine("   ✅ Tabla Depositos verificada/creada");
+            }
+        }
+
+        public void CrearTablaStockSiNoExiste()
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                connection.Open();
+
+                string queryStock = @"
+                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Stock' AND xtype='U')
+                    CREATE TABLE Stock (
+                        Id BIGINT,
+                        IdDeposito BIGINT,
+                        Codigo NVARCHAR(100),
+                        StockActual DECIMAL(18,4),
+                        StockReservado DECIMAL(18,4),
+                        StockConReservas DECIMAL(18,4),
+                        FechaDescarga DATETIME DEFAULT GETDATE(),
+                        PRIMARY KEY (Id, IdDeposito)
+                    )";
+
+                using (var command = new SqlCommand(queryStock, connection))
+                {
+                    command.ExecuteNonQuery();
+                }
+
+                Console.WriteLine("   ✅ Tabla Stock verificada/creada");
+            }
+        }
+
+        public void InsertarDepositos(List<Deposito> depositos)
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                connection.Open();
+
+                Console.WriteLine("   💾 Insertando depósitos...");
+
+                // LIMPIAR TABLA EXISTENTE
+                using (var truncateCommand = new SqlCommand("DELETE FROM Depositos", connection))
+                {
+                    truncateCommand.ExecuteNonQuery();
+                }
+
+                int depositosInsertados = 0;
+
+                foreach (var deposito in depositos)
+                {
+                    string query = @"
+                        INSERT INTO Depositos (Id, Nombre, Activo, Direccion, IDProvincia, IDCiudad)
+                        VALUES (@Id, @Nombre, @Activo, @Direccion, @IDProvincia, @IDCiudad)";
+
+                    using (var command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@Id", deposito.Id);
+                        command.Parameters.AddWithValue("@Nombre", string.IsNullOrEmpty(deposito.Nombre) ? (object)DBNull.Value : deposito.Nombre);
+                        command.Parameters.AddWithValue("@Activo", deposito.Activo);
+                        command.Parameters.AddWithValue("@Direccion", string.IsNullOrEmpty(deposito.Direccion) ? (object)DBNull.Value : deposito.Direccion);
+                        command.Parameters.AddWithValue("@IDProvincia", deposito.IDProvincia ?? (object)DBNull.Value);
+                        command.Parameters.AddWithValue("@IDCiudad", deposito.IDCiudad ?? (object)DBNull.Value);
+
+                        command.ExecuteNonQuery();
+                        depositosInsertados++;
+                    }
+                }
+
+                Console.WriteLine("   ✅ " + depositosInsertados + " depósitos insertados");
+            }
+        }
+
+        public void InsertarStock(List<StockItem> items, long idDeposito)
+        {
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                connection.Open();
+
+                Console.WriteLine("   💾 Insertando stock del depósito " + idDeposito + "...");
+
+                // LIMPIAR registros existentes de este depósito
+                using (var deleteCommand = new SqlCommand("DELETE FROM Stock WHERE IdDeposito = @IdDeposito", connection))
+                {
+                    deleteCommand.Parameters.AddWithValue("@IdDeposito", idDeposito);
+                    int eliminados = deleteCommand.ExecuteNonQuery();
+                    if (eliminados > 0)
+                        Console.WriteLine("   🗑️  " + eliminados + " registros anteriores eliminados");
+                }
+
+                int itemsInsertados = 0;
+
+                foreach (var item in items)
+                {
+                    // Usar IF NOT EXISTS para evitar duplicados (la API puede devolver el mismo ID más de una vez)
+                    string query = @"
+                        IF NOT EXISTS (SELECT 1 FROM Stock WHERE Id = @Id AND IdDeposito = @IdDeposito)
+                        INSERT INTO Stock (Id, IdDeposito, Codigo, StockActual, StockReservado, StockConReservas)
+                        VALUES (@Id, @IdDeposito, @Codigo, @StockActual, @StockReservado, @StockConReservas)";
+
+                    using (var command = new SqlCommand(query, connection))
+                    {
+                        command.Parameters.AddWithValue("@Id", item.Id);
+                        command.Parameters.AddWithValue("@IdDeposito", idDeposito);
+                        command.Parameters.AddWithValue("@Codigo", string.IsNullOrEmpty(item.Codigo) ? (object)DBNull.Value : item.Codigo);
+                        command.Parameters.AddWithValue("@StockActual", item.StockActual);
+                        command.Parameters.AddWithValue("@StockReservado", item.StockReservado);
+                        command.Parameters.AddWithValue("@StockConReservas", item.StockConReservas);
+
+                        int rowsAffected = command.ExecuteNonQuery();
+                        if (rowsAffected > 0)
+                            itemsInsertados++;
+                    }
+                }
+
+                Console.WriteLine("   ✅ " + itemsInsertados + " items de stock insertados");
+            }
+        }
     }
 }

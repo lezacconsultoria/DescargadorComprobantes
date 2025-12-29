@@ -42,7 +42,9 @@ namespace DescargadorComprobantes
 
                 bool descargarClientes = PreguntarSiNo("   📊 ¿Descargar CLIENTES?");
                 bool descargarProductos = PreguntarSiNo("   🏷️  ¿Descargar PRODUCTOS?");
+                bool descargarSaldos = PreguntarSiNo("   💰 ¿Descargar SALDOS?");
                 bool descargarComprobantes = PreguntarSiNo("   📄 ¿Descargar COMPROBANTES?");
+                bool descargarStock = PreguntarSiNo("   📦 ¿Descargar STOCK?");
 
                 Console.WriteLine();
 
@@ -80,10 +82,65 @@ namespace DescargadorComprobantes
                     Console.WriteLine();
                 }
 
-                // 4. PROCESAR COMPROBANTES
+                // 4. PROCESAR SALDOS
+                if (descargarSaldos)
+                {
+                    Console.WriteLine("4. 💰 PROCESANDO SALDOS...");
+
+                    // Pedir fechas para saldos
+                    string fechaDesdeSaldos, fechaHastaSaldos;
+
+                    Console.WriteLine("📅 Por favor, ingresa las fechas para SALDOS en formato YYYY-MM-DD");
+                    Console.Write("✅ Fecha DESDE (ej: 2025-01-01): ");
+                    fechaDesdeSaldos = Console.ReadLine();
+
+                    Console.Write("✅ Fecha HASTA (ej: 2025-12-31): ");
+                    fechaHastaSaldos = Console.ReadLine();
+                    Console.WriteLine();
+
+                    // Validar fechas
+                    if (string.IsNullOrEmpty(fechaDesdeSaldos) || string.IsNullOrEmpty(fechaHastaSaldos))
+                    {
+                        Console.WriteLine("❌ Error: Las fechas no pueden estar vacías");
+                    }
+                    else
+                    {
+                        // Crear tabla si no existe
+                        databaseManager.CrearTablaSaldosSiNoExiste();
+
+                        // Obtener comprobantes
+                        var comprobantesBusquedaSaldos = contabiliumService.ObtenerIdsComprobantes(fechaDesdeSaldos, fechaHastaSaldos);
+
+                        if (comprobantesBusquedaSaldos.Count > 0)
+                        {
+                            var comprobantesDetalladosSaldos = contabiliumService.ObtenerDetallesComprobantes(comprobantesBusquedaSaldos);
+
+                            if (comprobantesDetalladosSaldos.Count > 0)
+                            {
+                                databaseManager.InsertarSaldos(comprobantesDetalladosSaldos, fechaDesdeSaldos, fechaHastaSaldos);
+
+                                // Mostrar resumen saldos
+                                Console.WriteLine("\n📊 RESUMEN SALDOS:");
+                                Console.WriteLine("   • Fechas: " + fechaDesdeSaldos + " a " + fechaHastaSaldos);
+                                Console.WriteLine("   • Saldos procesados: " + comprobantesDetalladosSaldos.Count);
+                            }
+                            else
+                            {
+                                Console.WriteLine("❌ No se pudieron descargar los detalles para saldos");
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("❌ No se encontraron comprobantes en el rango de fechas especificado");
+                        }
+                    }
+                    Console.WriteLine();
+                }
+
+                // 5. PROCESAR COMPROBANTES
                 if (descargarComprobantes)
                 {
-                    Console.WriteLine("4. 📄 PROCESANDO COMPROBANTES...");
+                    Console.WriteLine("5. 📄 PROCESANDO COMPROBANTES...");
 
                     // Pedir fechas para comprobantes
                     string fechaDesde, fechaHasta;
@@ -148,6 +205,47 @@ namespace DescargadorComprobantes
                     Console.WriteLine();
                 }
 
+                // 6. PROCESAR STOCK
+                if (descargarStock)
+                {
+                    Console.WriteLine("6. 📦 PROCESANDO STOCK...");
+
+                    // Crear tablas
+                    databaseManager.CrearTablaDepositosSiNoExiste();
+                    databaseManager.CrearTablaStockSiNoExiste();
+
+                    // Obtener depósitos
+                    var depositos = contabiliumService.ObtenerDepositos();
+
+                    if (depositos.Count > 0)
+                    {
+                        // Insertar depósitos
+                        databaseManager.InsertarDepositos(depositos);
+
+                        // Por cada depósito, obtener e insertar stock
+                        int totalItemsStock = 0;
+                        foreach (var deposito in depositos)
+                        {
+                            var stockItems = contabiliumService.ObtenerStockPorDeposito(deposito.Id, deposito.Nombre);
+                            if (stockItems.Count > 0)
+                            {
+                                databaseManager.InsertarStock(stockItems, deposito.Id);
+                                totalItemsStock += stockItems.Count;
+                            }
+                        }
+
+                        // Mostrar resumen stock
+                        Console.WriteLine("\n📊 RESUMEN STOCK:");
+                        Console.WriteLine("   • Depósitos procesados: " + depositos.Count);
+                        Console.WriteLine("   • Items de stock totales: " + totalItemsStock);
+                    }
+                    else
+                    {
+                        Console.WriteLine("❌ No se encontraron depósitos");
+                    }
+                    Console.WriteLine();
+                }
+
                 // RESUMEN FINAL
                 Console.WriteLine("=========================================");
                 Console.WriteLine("🎉 ¡PROCESO COMPLETADO!");
@@ -164,10 +262,20 @@ namespace DescargadorComprobantes
                 else
                     Console.WriteLine("   ⏭️  Productos omitidos");
 
+                if (descargarSaldos)
+                    Console.WriteLine("   ✅ Saldos descargados");
+                else
+                    Console.WriteLine("   ⏭️  Saldos omitidos");
+
                 if (descargarComprobantes)
                     Console.WriteLine("   ✅ Comprobantes descargados");
                 else
                     Console.WriteLine("   ⏭️  Comprobantes omitidos");
+
+                if (descargarStock)
+                    Console.WriteLine("   ✅ Stock descargado");
+                else
+                    Console.WriteLine("   ⏭️  Stock omitido");
 
                 Console.WriteLine("   💾 Base de datos: " + Configuracion.SqlDatabase);
                 Console.WriteLine("=========================================\n");

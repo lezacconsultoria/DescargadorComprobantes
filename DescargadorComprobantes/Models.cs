@@ -355,4 +355,46 @@ namespace DescargadorComprobantes
         [JsonProperty("Items")]
         public List<T> Items { get; set; }
     }
+
+    public class Deposito
+    {
+        [JsonProperty("Id")]
+        public long Id { get; set; }
+
+        [JsonProperty("Nombre")]
+        public string Nombre { get; set; }
+
+        [JsonProperty("Activo")]
+        public bool Activo { get; set; }
+
+        [JsonProperty("Direccion")]
+        public string Direccion { get; set; }
+
+        [JsonProperty("IDProvincia")]
+        public long? IDProvincia { get; set; }
+
+        [JsonProperty("IDCiudad")]
+        public long? IDCiudad { get; set; }
+    }
+
+    public class StockItem
+    {
+        [JsonProperty("Id")]
+        public long Id { get; set; }
+
+        [JsonProperty("Codigo")]
+        public string Codigo { get; set; }
+
+        [JsonProperty("StockActual")]
+        public decimal StockActual { get; set; }
+
+        [JsonProperty("StockReservado")]
+        public decimal StockReservado { get; set; }
+
+        [JsonProperty("StockConReservas")]
+        public decimal StockConReservas { get; set; }
+
+        // Campo adicional para guardar de qué depósito viene
+        public long IdDeposito { get; set; }
+    }
 }

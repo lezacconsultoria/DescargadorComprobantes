@@ -288,5 +288,98 @@ namespace DescargadorComprobantes
 
             return todosLosProductos;
         }
+
+        public List<Deposito> ObtenerDepositos()
+        {
+            Console.WriteLine("📦 Descargando depósitos...");
+
+            var url = string.Format("{0}/api/inventarios/getDepositos", Configuracion.ApiBaseUrl);
+
+            try
+            {
+                var request = (HttpWebRequest)WebRequest.Create(url);
+                request.Method = "GET";
+                request.Headers["Authorization"] = "Bearer " + _accessToken;
+
+                using (var response = (HttpWebResponse)request.GetResponse())
+                using (var stream = response.GetResponseStream())
+                using (var reader = new StreamReader(stream))
+                {
+                    var jsonResponse = reader.ReadToEnd();
+                    // La API devuelve un array directo, no un objeto con Items
+                    var depositos = JsonConvert.DeserializeObject<List<Deposito>>(jsonResponse);
+
+                    Console.WriteLine("   ✅ " + depositos.Count + " depósitos encontrados\n");
+                    return depositos;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("   ❌ Error obteniendo depósitos: " + ex.Message);
+                return new List<Deposito>();
+            }
+        }
+
+        public List<StockItem> ObtenerStockPorDeposito(long idDeposito, string nombreDeposito)
+        {
+            var todosLosItems = new List<StockItem>();
+            int paginaActual = 0;  // La API empieza en página 0
+            bool hayMasPaginas = true;
+
+            Console.WriteLine("   📋 Descargando stock de depósito: " + nombreDeposito + "...");
+
+            while (hayMasPaginas)
+            {
+                var url = string.Format(
+                    "{0}/api/inventarios/getStockByDeposito?id={1}&page={2}",
+                    Configuracion.ApiBaseUrl,
+                    idDeposito,
+                    paginaActual);
+
+                try
+                {
+                    Console.Write("      📄 Página " + paginaActual + "... ");
+
+                    var request = (HttpWebRequest)WebRequest.Create(url);
+                    request.Method = "GET";
+                    request.Headers["Authorization"] = "Bearer " + _accessToken;
+
+                    using (var response = (HttpWebResponse)request.GetResponse())
+                    using (var stream = response.GetResponseStream())
+                    using (var reader = new StreamReader(stream))
+                    {
+                        var jsonResponse = reader.ReadToEnd();
+                        var apiResponse = JsonConvert.DeserializeObject<ApiResponse<StockItem>>(jsonResponse);
+
+                        if (apiResponse.Items != null && apiResponse.Items.Count > 0)
+                        {
+                            // Asignar el IdDeposito a cada item
+                            foreach (var item in apiResponse.Items)
+                            {
+                                item.IdDeposito = idDeposito;
+                            }
+
+                            todosLosItems.AddRange(apiResponse.Items);
+                            Console.WriteLine("✅ " + apiResponse.Items.Count + " items");
+                            paginaActual++;
+                            Thread.Sleep(Configuracion.DelayBetweenRequests);
+                        }
+                        else
+                        {
+                            hayMasPaginas = false;
+                            Console.WriteLine("fin");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("❌ Error: " + ex.Message);
+                    hayMasPaginas = false;
+                }
+            }
+
+            Console.WriteLine("      🏁 Total: " + todosLosItems.Count + " items de stock\n");
+            return todosLosItems;
+        }
     }
 }
